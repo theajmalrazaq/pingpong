@@ -1,19 +1,22 @@
 org 100h
 jmp start
-
 ;==============================================================================
 ; Data Segment - Game Variables and Constants
 ;==============================================================================
 welcome_message db 'Welcome to Ping Pong Game Developed By Ajmal Razaq & Ahmad Rohan', '$'
 game_over_msg db 'Game Over! Press ESC to exit or SPACE to play again', '$'
+player_1_name db 'Player One: ','$'
+player_2_name db 'Player Two: ','$'
 pattern_x db 2    
 pattern_y db 2    
 pattern_dir db 0  
 pattern dw 0
 
+pattern_no db 'Press SPACE to start the game without Moving Patterns', '$'
 pattren_star db 'Press 1 for Star Background' ,'$'
 pattren_line db 'Press 2 for Line Background' ,'$'
 pattren_arrow db 'Press 3 for Arrow Background' ,'$'
+
 
 paddle_1_x db 2   
 paddle_1_y db 12  
@@ -25,8 +28,143 @@ ball_char db 'O'    ; Ball character
 ball_color db 0x0F  ; Ball color (white on black)
 player_1_score db 0 
 player_2_score db 0
+player_1_win_msg db 'Player one has won!', '$'
+player_2_win_msg db 'Player two has won!', '$'
 max_score db 5      ; Game ends when a player reaches this score
-game_speed dw 10     ; Increase this number to slow down the ball
+game_speed dw 8     ; Increase this number to slow down the ball
+
+
+pause_msg db 'GAME PAUSED - Press P to Resume', '$'
+is_paused db 0    ; 0 = running, 1 = paused
+
+;==============================================================================
+; Sound Effect Functions
+;==============================================================================
+play_paddle_hit:
+    push ax
+    push bx
+    push cx
+    
+    mov al, 182         ; Prepare the speaker for the note
+    out 43h, al         
+    mov ax, 2000        ; Frequency for paddle hit (higher pitch)
+    out 42h, al         ; Output low byte
+    mov al, ah          ; Output high byte
+    out 42h, al 
+    
+    in al, 61h         ; Turn speaker on
+    or al, 00000011b
+    out 61h, al
+    
+    mov cx, 1          ; Short duration
+    call sound_delay
+    
+    in al, 61h         ; Turn speaker off
+    and al, 11111100b
+    out 61h, al
+    
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+play_wall_bounce:
+    push ax
+    push bx
+    push cx
+    
+    mov al, 182
+    out 43h, al
+    mov ax, 2500        ; Different frequency for wall bounce
+    out 42h, al
+    mov al, ah
+    out 42h, al
+    
+    in al, 61h
+    or al, 00000011b
+    out 61h, al
+    
+    mov cx, 1
+    call sound_delay
+    
+    in al, 61h
+    and al, 11111100b
+    out 61h, al
+    
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+play_score:
+    push ax
+    push bx
+    push cx
+    
+    mov al, 182
+    out 43h, al
+    mov ax, 1500        ; Lower frequency for scoring
+    out 42h, al
+    mov al, ah
+    out 42h, al
+    
+    in al, 61h
+    or al, 00000011b
+    out 61h, al
+    
+    mov cx, 4          ; Longer duration for score sound
+    call sound_delay
+    
+    in al, 61h
+    and al, 11111100b
+    out 61h, al
+    
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+play_game_over:
+    push ax
+    push bx
+    push cx
+    
+    mov al, 182
+    out 43h, al
+    mov ax, 500         ; Very low frequency for game over
+    out 42h, al
+    mov al, ah
+    out 42h, al
+    
+    in al, 61h
+    or al, 00000011b
+    out 61h, al
+    
+    mov cx, 8          ; Longest duration for game over
+    call sound_delay
+    
+    in al, 61h
+    and al, 11111100b
+    out 61h, al
+    
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+sound_delay:
+    push dx
+    push ax
+sound_delay_loop:
+    mov dx, 8000
+delay_inner:
+    dec dx
+    jnz delay_inner
+    loop sound_delay_loop
+    pop ax
+    pop dx
+    ret
+
 
 ;==============================================================================
 ; Clear Screen Using BIOS Interrupt
@@ -43,6 +181,7 @@ clear_screen:
 ; Print Pattern - Fills entire playable area with pattern
 ;==============================================================================
 print_pattern:
+    ; [Previous code remains the same until the pattern printing logic]
     push ax
     push bx
     push cx
@@ -51,35 +190,33 @@ print_pattern:
     push di
     push es
 
-    ; Set up video memory segment
     mov ax, 0xB800
     mov es, ax
     
-    ; Calculate starting position based on pattern_x and pattern_y
-    mov al, [pattern_y]        ; Load Y position
-    mov bl, 160               ; Bytes per row
-    mul bl                    ; AX = Y * 160
-    mov di, ax               ; DI = Y * 160
-    mov al, [pattern_x]       ; Load X position
-    mov bl, 2                ; 2 bytes per character
-    mul bl                   ; AX = X * 2
-    add di, ax              ; Add X offset to DI
+    mov al, [pattern_y]
+    mov bl, 160
+    mul bl
+    mov di, ax
+    mov al, [pattern_x]
+    mov bl, 2
+    mul bl
+    add di, ax
     
-    mov dx, 22               ; Height of pattern (reduced for faster movement)
+    mov dx, 22
 row_loop:
-    mov cx, 5              ; Width of pattern (reduced for faster movement)
-    push di               ; Save start position of current row
+    mov cx, 5
+    push di
     
 column_loop:
     mov si,[pattern]
-    mov word [es:di],si  ; Light gray hyphen character
-    add di, 2                   ; Move to next column
+    mov word [es:di],si
+    add di, 2
     loop column_loop
     
-    pop di             ; Restore row start position
-    add di, 160        ; Move to next row
+    pop di
+    add di, 160
     dec dx
-    jnz row_loop       ; Continue until all rows are done
+    jnz row_loop
 
     pop es
     pop di
@@ -91,31 +228,21 @@ column_loop:
     ret
 
 ;=============================================================================
-; Update pattren
+; Update pattern - Modified for left-to-right movement with reset
 ;=============================================================================
 update_pattern:
     push ax
     
-    mov al, [pattern_dir]
-    cmp al, 0          ; Moving right
-    je pattern_right
-    cmp al, 2          ; Moving left  
-    je pattern_left
-    jmp pattern_done
-
-pattern_right:
+    ; Always move right
     inc byte [pattern_x]
-    cmp byte [pattern_x], 74  
+    
+    ; Check if pattern reached right edge
+    cmp byte [pattern_x], 74
     jl pattern_done
-    mov byte [pattern_dir], 2   
-    jmp pattern_done
-
-pattern_left:
-    dec byte [pattern_x]
-    cmp byte [pattern_x], 3    
-    jg pattern_done
-    mov byte [pattern_dir], 0   
-
+    
+    ; Reset to left side when reaching right edge
+    mov byte [pattern_x], 3    ; Reset to starting X position
+    
 pattern_done:
     pop ax
     ret
@@ -298,6 +425,7 @@ update_ball:
 
 reverse_y:
     neg byte [ball_dir+1]
+     call play_wall_bounce   ; Add this line
     jmp update_ball_done
 
 check_left_paddle:
@@ -309,6 +437,7 @@ check_left_paddle:
     cmp al, bl
     jg no_paddle_hit
     neg byte [ball_dir]
+    call play_paddle_hit    ; Add this line
     jmp update_ball_done
 
 check_right_paddle:
@@ -320,15 +449,18 @@ check_right_paddle:
     cmp al, bl
     jg no_paddle_hit
     neg byte [ball_dir]
+     call play_paddle_hit    ; Add this line
     jmp update_ball_done
 
 left_scores:
     inc byte [player_1_score]
+      call play_score         ; Add this line
     call reset_ball
     jmp update_ball_done
 
 right_scores:
     inc byte [player_2_score]
+    call play_score         ; Add this line
     call reset_ball
 
 no_paddle_hit:
@@ -355,29 +487,55 @@ print_scores:
     push bx
     push cx
     push dx
+ 
+    ; Print Player 1 name
+    mov ax, player_1_name
+    push ax                  ; String offset
+    mov ax, 11              ; String length
+    push ax
+    mov ax, 0x0114         ; Row 1, Column 20
+    push ax
+    mov al, 0x07            ; Color attribute (light gray)
+    push ax
+    call print_string
 
     ; Player 1 score
-    mov dh, 1          ; Row
-    mov dl, 20         ; Column
-    mov bh, 0          ; Page
-    mov ah, 02h        ; Set cursor position
+    mov dh, 1               ; Row
+    mov dl, 32              ; Column (after name)
+    mov bh, 0              ; Page
+    mov ah, 02h            ; Set cursor position
     int 10h
 
     mov al, [player_1_score]
-    add al, '0'        ; Convert to ASCII
-    mov bl, 0x07       ; Color attribute
-    mov cx, 1          ; Character count
-    mov ah, 09h        ; Write character
+    add al, '0'            ; Convert to ASCII
+    mov bl, 0x07           ; Color attribute (light gray)
+    mov cx, 1              ; Character count
+    mov ah, 09h            ; Write character
     int 10h
 
+    ; Print Player 2 name
+    mov ax, player_2_name
+    push ax                ; String offset
+    mov ax, 11            ; String length
+    push ax
+    mov ax, 0x0132        ; Row 1, Column 50
+    push ax
+    mov al, 0x07          ; Color attribute (light gray)
+    push ax
+    call print_string
+
     ; Player 2 score
-    mov dl, 60         ; Column for player 2
-    mov ah, 02h
+    mov dh, 1             ; Row
+    mov dl, 62            ; Column (after name)
+    mov bh, 0            ; Page
+    mov ah, 02h          ; Set cursor position
     int 10h
 
     mov al, [player_2_score]
-    add al, '0'
-    mov ah, 09h
+    add al, '0'          ; Convert to ASCII
+    mov bl, 0x07         ; Color attribute (light gray)
+    mov cx, 1            ; Character count
+    mov ah, 09h          ; Write character
     int 10h
 
     pop dx
@@ -386,26 +544,6 @@ print_scores:
     pop ax
     ret
 
-;==============================================================================
-; Check Game Over
-;==============================================================================
-check_game_over:
-    push ax
-    
-    mov al, [max_score]
-    cmp [player_1_score], al
-    jge game_is_over
-    cmp [player_2_score], al
-    jge game_is_over
-    
-    pop ax
-    clc                     ; Clear carry flag - game not over
-    ret
-
-game_is_over:
-    pop ax
-    stc                     ; Set carry flag - game is over
-    ret
 
 ;==============================================================================
 ; Delay function
@@ -504,70 +642,189 @@ paddle2_row:
     pop ax
     ret
 
+;==============================================================================
+; Pattern setup functions - Modified with charcoal color
+;==============================================================================
 set_pattern_star:
-    mov ax, 0x072A          ; 07 = attribute, 2A = ASCII for '*'
+    mov ax, 0x082A          ; 08 = charcoal attribute, 2A = ASCII for '*'
     mov [pattern], ax
     jmp game_loop
 
 set_pattern_line:
-    mov ax, 0x072D          ; 07 = attribute, 2D = ASCII for '-'
+    mov ax, 0x082D          ; 08 = charcoal attribute, 2D = ASCII for '-'
     mov [pattern], ax
     jmp game_loop
 
 set_pattern_arrow:
-    mov ax, 0x073E          ; 07 = attribute, 3E = ASCII for '>'
-    mov [pattern], ax      ; Fixed spelling of 'pattern'
+    mov ax, 0x083E          ; 08 = charcoal attribute, 3E = ASCII for '>'
+    mov [pattern], ax
     jmp game_loop
 
+
+
+;==============================================================================
+; Print Pause Message
+;==============================================================================
+print_pause_message:
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    mov ax, pause_msg
+    push ax
+    mov ax, 31              ; Length of pause message
+    push ax
+    mov ax, 0x0C1A         ; Row 12, Column 28 (centered)
+    push ax
+    mov al, 0x0E           ; Yellow color
+    push ax
+    call print_string
+    
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+;==============================================================================
+; Handle Pause/Resume
+;==============================================================================
+check_pause:
+    push ax
+    
+    ; Check if P key was pressed
+    cmp al, 'p'
+    je toggle_pause
+    cmp al, 'P'
+    je toggle_pause
+    jmp check_pause_done
+    
+toggle_pause:
+    ; Toggle pause state
+    xor byte [is_paused], 1
+    
+    ; If now paused, show pause message
+    cmp byte [is_paused], 1
+    je show_pause
+    
+    ; If unpaused, just return to game
+    jmp check_pause_done
+    
+show_pause:
+    call print_pause_message
+    
+pause_loop:
+    ; Wait for key press while paused
+    mov ah, 00h
+    int 16h
+    
+    ; Check if P pressed again
+    cmp al, 'p'
+    je unpause
+    cmp al, 'P'
+    je unpause
+    jmp pause_loop
+    
+unpause:
+    ; Clear pause message by redrawing screen
+    xor byte [is_paused], 1
+    
+check_pause_done:
+    pop ax
+    ret
+
+
+show_welcome_screen:
+    ; Clear the screen before showing messages
+    call clear_screen
+    
+    ; Show main welcome message
+    mov ax, welcome_message
+    push ax                  ; String offset
+    mov ax, 64              ; Message length (64 characters)
+    push ax
+    mov ax, 0x0408          ; Position: Row 4, Column 8
+    push ax
+    mov al, 0x0A            ; Color: Bright green
+    push ax
+    call print_string
+
+    ; Show pattern selection message
+    mov ax, pattern_no
+    push ax                  ; String offset
+    mov ax, 53              ; Message length (53 characters)
+    push ax
+    mov ax, 0x0808          ; Position: Row 8, Column 8
+    push ax
+    mov al, 0x0A            ; Color: Bright green
+    push ax
+    call print_string
+
+    ; Show star pattern option
+    mov ax, pattren_star    ; Note: "pattern" is misspelled in variable name
+    push ax                  ; String offset
+    mov ax, 27              ; Message length (27 characters)
+    push ax
+    mov ax, 0x091A          ; Position: Row 9, Column 26
+    push ax
+    mov al, 0x0A            ; Color: Bright green
+    push ax
+    call print_string
+
+    ; Show line pattern option
+    mov ax, pattren_line    ; Note: "pattern" is misspelled in variable name
+    push ax                  ; String offset
+    mov ax, 27              ; Message length (27 characters)
+    push ax
+    mov ax, 0x0A1A          ; Position: Row 10, Column 26
+    push ax
+    mov al, 0x0A            ; Color: Bright green
+    push ax
+    call print_string
+
+    ; Show arrow pattern option
+    mov ax, pattren_arrow   ; Note: "pattern" is misspelled in variable name
+    push ax                  ; String offset
+    mov ax, 28              ; Message length (28 characters)
+    push ax
+    mov ax, 0x0B1A          ; Position: Row 11, Column 26
+    push ax
+    mov al, 0x0A            ; Color: Bright green
+    push ax
+    call print_string
+
+    ret
+
+    ;==============================================================================
+; Handle welcome screen input
+;==============================================================================
+handle_welcome_input:
+    mov ah, 00h
+    int 16h
+    
+    ; Check for valid keys only
+    cmp al, '1'
+    je set_pattern_star
+    cmp al, '2'
+    je set_pattern_line
+    cmp al, '3'
+    je set_pattern_arrow
+    cmp al, 32             ; Space key
+    je no_key_pressed
+    
+    ; If any other key is pressed, keep waiting
+    jmp handle_welcome_input
 ;==============================================================================
 ; Start of the game
 ;==============================================================================
 start:
-    ; Show welcome message
+     ; Show welcome message
     call clear_screen
-    
-    ; Print welcome message
-    mov ax, welcome_message
-    push ax                  ; String offset
-    mov ax, 64              ; String length
-    push ax
-    mov ax, 0x0408         ; Row 12, Column 16
-    push ax
-    mov al, 0x0A            ; Color attribute
-    push ax
-    call print_string
+    call show_welcome_screen
 
-
-    mov ax, pattren_star
-    push ax                  ; String offset
-    mov ax, 27              ; String length
-    push ax
-    mov ax, 0x0808         ; Row 12, Column 16
-    push ax
-    mov al, 0x0A            ; Color attribute
-    push ax
-    call print_string
-
-   mov ax, pattren_line
-    push ax                  ; String offset
-    mov ax, 27              ; String length
-    push ax
-    mov ax, 0x0A08         ; Row 12, Column 16
-    push ax
-    mov al, 0x0A            ; Color attribute
-    push ax
-    call print_string
-
-
-    mov ax, pattren_arrow
-    push ax                  ; String offset
-    mov ax, 28              ; String length
-    push ax
-    mov ax, 0x0B08        ; Row 12, Column 16
-    push ax
-    mov al, 0x0A            ; Color attribute
-    push ax
-    call print_string
+    ; Wait for valid input only
+    call handle_welcome_input
 
     mov ah, 00h
     int 16h
@@ -577,7 +834,11 @@ start:
     je set_pattern_line
     cmp al,'3'
     je set_pattern_arrow
-    jmp no_key_pressed
+    cmp al,32
+    je no_key_pressed
+    in al, 21h
+    or al, 2 
+    out 21h, al 
 
 game_loop:
     call clear_screen
@@ -601,16 +862,23 @@ game_loop:
     
     mov ah, 00h
     int 16h
-    cmp al, 'w'
+    
+    ; First check for pause
+    call check_pause
+    cmp byte [is_paused], 1
+    je game_loop    ; If paused, keep looping without updates
+    
+    ; Then check other controls
+    cmp ah, 0x11
     je move_left_up
-    cmp al, 's'
+    cmp ah,0x1F
     je move_left_down
-    cmp ah, 48h             ; Up arrow
+    cmp ah, 0x48            ; Up arrow
     je move_right_up
-    cmp ah, 50h             ; Down arrow
+    cmp ah, 0x50             ; Down arrow
     je move_right_down
-    cmp al, 27              ; ESC
-    je exit_game
+    
+
     
 no_key_pressed:
     call delay
@@ -640,9 +908,62 @@ move_right_down:
     inc byte [paddle_2_y]
     jmp no_key_pressed
 
+
+;==============================================================================
+; Game Over and Win Conditions
+;==============================================================================
+check_game_over:
+    push ax
+    
+    mov al, [max_score]
+    cmp [player_1_score], al
+    jge game_is_over
+    cmp [player_2_score], al
+    jge game_is_over
+    
+    pop ax
+    clc                     ; Clear carry flag - game not over
+    ret
+
+game_is_over:
+ call play_game_over     ; Add this line
+    pop ax
+    stc                     ; Set carry flag - game is over
+    ret
+
 show_game_over:
-    ; Display game over message
     call clear_screen
+
+    mov al, [player_1_score]
+    cmp al, [player_2_score]
+    jg player_1_wins        ; Jump if player 1 has higher score
+    jl player_2_wins        ; Jump if player 2 has higher score
+    je show_final_message   ; Jump if scores are equal
+
+player_1_wins:
+    mov ax, player_1_win_msg
+    push ax
+    mov ax, 19              ; Length of win message
+    push ax
+    mov ax, 0x0A1C         ; Row 12, Column 16
+    push ax
+    mov al, 0x0F           ; White color
+    push ax
+    call print_string
+    jmp show_final_message
+
+player_2_wins:
+    mov ax, player_2_win_msg
+    push ax
+    mov ax, 19              ; Length of win message
+    push ax
+    mov ax, 0x0A1C        ; Row 12, Column 16
+    push ax
+    mov al, 0x0F           ; White color
+    push ax
+    call print_string
+    
+show_final_message:
     mov ax, game_over_msg
     push ax
     mov ax, 45              ; Length of game over message
@@ -652,14 +973,14 @@ show_game_over:
     mov al, 0x0F           ; White color
     push ax
     call print_string
-    
-    ; Wait for ESC or SPACE
+    jmp wait_key           ; Jump to key wait routine
+
 wait_key:
     mov ah, 00h
     int 16h
-    cmp al, 27             ; ESC
+    cmp al, 27           
     je exit_game
-    cmp al, 32             ; SPACE
+    cmp al, 32            
     je restart_game
     jmp wait_key
 
