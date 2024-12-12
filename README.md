@@ -3,7 +3,6 @@
 ## Overview
 This project is a Pong game implemented in 8086 assembly language. It features basic gameplay mechanics, sound effects, customizable patterns, and a simple user interface. The game supports two players and includes features such as moving paddles, a bouncing ball, and a score tracking system. 
 
----
 
 ## Features
 
@@ -31,7 +30,6 @@ This project is a Pong game implemented in 8086 assembly language. It features b
 - **Graphics:** ASCII-based visuals for the ball, paddles, and walls.
 - **Customizable Colors:** Ball color and character are easily modifiable.
 
----
 
 ## Installation and Execution
 
@@ -51,7 +49,6 @@ This project is a Pong game implemented in 8086 assembly language. It features b
      game.exe
      ```
 
----
 
 ## Controls
 
@@ -66,7 +63,6 @@ This project is a Pong game implemented in 8086 assembly language. It features b
 | `W/S`     | Move Player 1 paddle up/down          |
 | `UP/DOWN` | Move Player 2 paddle up/down          |
 
----
 
 ## Code Structure
 
@@ -81,7 +77,6 @@ This project is a Pong game implemented in 8086 assembly language. It features b
 - **Graphics Rendering:** Clears the screen, draws walls, and updates ball and paddle positions.
 - **Gameplay Logic:** Updates game state, checks for collisions, and manages scoring.
 
----
 
 ## Customization
 - Modify the ball character, colors, and speeds by editing:
@@ -95,15 +90,10 @@ This project is a Pong game implemented in 8086 assembly language. It features b
   max_score db 5
   ```
 
----
 
-## Acknowledgments
-Special thanks to our instructor and peers for guidance and support in developing this project.
 
----
 
 ## License
 This project is licensed under the MIT License. Feel free to use and modify the code for educational purposes.
 
----
 
