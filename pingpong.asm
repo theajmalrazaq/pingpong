@@ -4,7 +4,7 @@ jmp start
 ;Game Variables and Constants
 ;==============================================================================
 ;messages to print
-welcome_message db 'Developed By Ajmal Razaq (23F-0524) & Ahmad Rohan (23F-0550)', '$'
+welcome_message db 'Developed By Ajmal Razaq', '$'
 game_over_msg db 'Game Over! Press ESC to exit or SPACE to play again', '$'
 pattern_no db 'Press SPACE to start the game without Moving Patterns', '$'
 pattern_star db 'Press 1 for Star Background' ,'$'
@@ -333,11 +333,11 @@ print_walls:
     mov ax, 0xB800
     mov es, ax
     
-   mov ax, welcome_message
+    mov ax, welcome_message
     push ax               
-    mov ax, 60              ; Message length
+    mov ax, 24              ; Message length
     push ax
-    mov ax, 0x0306         
+    mov ax, 0x031C         
     push ax
     mov al, 0x0F          
     push ax
@@ -837,9 +837,9 @@ show_welcome_screen:
     ; Show welcome message
     mov ax, welcome_message
     push ax               
-    mov ax, 60              ; Message length
+    mov ax, 24              ; Message length
     push ax
-    mov ax, 0x0406         
+    mov ax, 0x041C         
     push ax
     mov al, 0x0F          
     push ax
